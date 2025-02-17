@@ -104,6 +104,10 @@ namespace {
   const std::string PROP_FS_URI = "rocksdb.fs_uri";
   const std::string PROP_FS_URI_DEFAULT = "";
 
+  /*补充 by znbc*/
+  const std::string PROP_DATAPATH = "rocksdb.datapath";
+  const std::string PROP_DATAPATH_DEFAULT = "";
+
   static std::shared_ptr<rocksdb::Env> env_guard;
   static std::shared_ptr<rocksdb::Cache> block_cache;
 #if ROCKSDB_MAJOR < 8
@@ -216,6 +220,22 @@ void RocksdbDB::Init() {
   if (!s.ok()) {
     throw utils::Exception(std::string("RocksDB Open: ") + s.ToString());
   }
+
+  /* 补充：获取datapath参数 by znbc*/
+  std::string data_path = props.GetProperty(PROP_DATAPATH, PROP_DATAPATH_DEFAULT);
+  if (data_path.empty()) {
+    printf("[WARNING] datapath is not set. Using default data generation.\n");
+  } else {
+    datapath_ = std::string(data_path);
+    printf("[INFO] Using dataset: %s\n", data_path.c_str());
+    // 载入数据文件
+    DB::Status status = LoadFromFile(datapath_);
+    if (status != kOK) {
+      throw utils::Exception(std::string("Failed to load data from file: ") + datapath_ );
+    } else {
+      printf("Data successfully loaded from file.\n");
+    }
+  }
 }
 
 void RocksdbDB::Cleanup() { 
@@ -243,6 +263,9 @@ void RocksdbDB::GetOptions(const utils::Properties &props, rocksdb::Options *opt
     if (!s.ok()) {
       throw utils::Exception(std::string("RocksDB CreateFromUri: ") + s.ToString());
     }
+
+    printf("env is nullptr ? %s %p filesystem %p\n",env ? "no" : "yes",env,env->GetFileSystem().get()); // added 20250214
+
     opt->env = env;
   }
 
@@ -515,6 +538,14 @@ DB::Status RocksdbDB::MergeSingle(const std::string &table, const std::string &k
 
 DB::Status RocksdbDB::InsertSingle(const std::string &table, const std::string &key,
                                    std::vector<Field> &values) {
+  // 若 `datapath` 变量已设置，则批量导入数据 added by znbc
+  static bool data_loaded = false;
+  if (!data_loaded && !datapath_.empty()) {
+    DB::Status status = LoadFromFile(datapath_);
+    if (status != kOK) return status;
+    data_loaded = true;
+  }
+
   std::string data;
   SerializeRow(values, data);
   rocksdb::WriteOptions wopt;
@@ -539,5 +570,31 @@ DB *NewRocksdbDB() {
 }
 
 const bool registered = DBFactory::RegisterDB("rocksdb", NewRocksdbDB);
+
+// 补充 加载数据文件 by znbc
+DB::Status RocksdbDB::LoadFromFile(const std::string &datapath) {
+  std::ifstream infile(datapath);
+  if (!infile) {
+    throw utils::Exception(std::string("Error: Cannot open data file: "));
+  }
+
+  rocksdb::WriteOptions wopt;
+  std::string line;
+  while (std::getline(infile, line)) {
+    size_t space_pos = line.find(' ');
+    if (space_pos == std::string::npos) continue; // 忽略格式错误的行
+
+    std::string key = line.substr(0, space_pos);
+    std::string value = line.substr(space_pos + 1);
+    
+    rocksdb::Status s = db_->Put(wopt, key, value);
+    if (!s.ok()) {
+      throw utils::Exception(std::string("RocksDB Put failed: ") + s.ToString());
+    }
+  }
+
+  infile.close();
+  return kOK;
+}
 
 } // ycsbc
