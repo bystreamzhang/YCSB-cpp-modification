@@ -19,6 +19,22 @@
 #include <rocksdb/utilities/options_util.h>
 #include <rocksdb/write_batch.h>
 
+//#define TEST_ZNBC
+//#define SHOW_INSERT_INFO
+
+#ifdef TEST_ZNBC
+unsigned long long InsertSingleCount = 0;
+unsigned long long ReadSingleCount = 0;
+unsigned long long ScanSingleCount = 0;
+unsigned long long UpdateSingleCount = 0;
+unsigned long long MergeSingleCount = 0;
+unsigned long long DeleteSingleCount = 0;
+unsigned long long SerializeRowCount = 0;
+unsigned long long DeserializeRow1Count = 0;
+unsigned long long DeserializeRow2Count = 0;
+unsigned long long OtherCount = 0;
+#endif
+
 namespace {
   const std::string PROP_NAME = "rocksdb.dbname";
   const std::string PROP_NAME_DEFAULT = "";
@@ -222,12 +238,22 @@ void RocksdbDB::Init() {
   }
 
   /* 补充：获取datapath参数 by znbc*/
+  insert_count = 0;
   std::string data_path = props.GetProperty(PROP_DATAPATH, PROP_DATAPATH_DEFAULT);
-  if (data_path.empty()) {
+  if (data_path == "") {
+    data_loaded = false;
     printf("[WARNING] datapath is not set. Using default data generation.\n");
   } else {
+    data_loaded = true;
     datapath_ = std::string(data_path);
     printf("[INFO] Using dataset: %s\n", data_path.c_str());
+    // 打开文件并获取文件大小
+    std::ifstream file(datapath_, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) {
+      throw std::runtime_error("Failed to open file: " + datapath_);
+    }
+    file_size = file.tellg();  // 获取文件的大小
+    /*
     // 载入数据文件
     DB::Status status = LoadFromFile(datapath_);
     if (status != kOK) {
@@ -235,6 +261,7 @@ void RocksdbDB::Init() {
     } else {
       printf("Data successfully loaded from file.\n");
     }
+    */
   }
 }
 
@@ -391,6 +418,11 @@ void RocksdbDB::GetOptions(const utils::Properties &props, rocksdb::Options *opt
 }
 
 void RocksdbDB::SerializeRow(const std::vector<Field> &values, std::string &data) {
+  #ifdef TEST_ZNBC
+  //printf("SerializeRow\n");
+  SerializeRowCount++;
+  if(SerializeRowCount % 100 == 0){printf("SerializeRow Count = %lld\n", SerializeRowCount);}
+  #endif
   for (const Field &field : values) {
     uint32_t len = field.name.size();
     data.append(reinterpret_cast<char *>(&len), sizeof(uint32_t));
@@ -403,6 +435,11 @@ void RocksdbDB::SerializeRow(const std::vector<Field> &values, std::string &data
 
 void RocksdbDB::DeserializeRowFilter(std::vector<Field> &values, const char *p, const char *lim,
                                      const std::vector<std::string> &fields) {
+  #ifdef TEST_ZNBC
+  printf("DeserializeRowFilter\n");
+  OtherCount++;
+  if(OtherCount % 100 == 0){printf("Other Count = %lld\n", OtherCount);}
+  #endif
   std::vector<std::string>::const_iterator filter_iter = fields.begin();
   while (p != lim && filter_iter != fields.end()) {
     assert(p < lim);
@@ -424,12 +461,22 @@ void RocksdbDB::DeserializeRowFilter(std::vector<Field> &values, const char *p, 
 
 void RocksdbDB::DeserializeRowFilter(std::vector<Field> &values, const std::string &data,
                                      const std::vector<std::string> &fields) {
+  #ifdef TEST_ZNBC
+  printf("DeserializeRowFilter\n");
+  OtherCount++;
+  if(OtherCount % 100 == 0){printf("Other Count = %lld\n", OtherCount);}
+  #endif
   const char *p = data.data();
   const char *lim = p + data.size();
   DeserializeRowFilter(values, p, lim, fields);
 }
 
 void RocksdbDB::DeserializeRow(std::vector<Field> &values, const char *p, const char *lim) {
+  #ifdef TEST_ZNBC
+  //printf("DeserializeRow\n");
+  DeserializeRow2Count++;
+  if(DeserializeRow2Count % 100 == 0){printf("DeserializeRow2 Count = %lld\n", DeserializeRow2Count);}
+  #endif
   while (p != lim) {
     assert(p < lim);
     uint32_t len = *reinterpret_cast<const uint32_t *>(p);
@@ -445,6 +492,11 @@ void RocksdbDB::DeserializeRow(std::vector<Field> &values, const char *p, const 
 }
 
 void RocksdbDB::DeserializeRow(std::vector<Field> &values, const std::string &data) {
+  #ifdef TEST_ZNBC
+  //printf("DeserializeRow\n");
+  DeserializeRow1Count++;
+  if(DeserializeRow1Count % 100 == 0){printf("DeserializeRow1 Count = %lld\n", DeserializeRow1Count);}
+  #endif
   const char *p = data.data();
   const char *lim = p + data.size();
   DeserializeRow(values, p, lim);
@@ -453,6 +505,10 @@ void RocksdbDB::DeserializeRow(std::vector<Field> &values, const std::string &da
 DB::Status RocksdbDB::ReadSingle(const std::string &table, const std::string &key,
                                  const std::vector<std::string> *fields,
                                  std::vector<Field> &result) {
+  #ifdef TEST_ZNBC
+  ReadSingleCount++;
+  if(ReadSingleCount % 100 == 0){printf("ReadSingle Count = %lld\n", ReadSingleCount);}
+  #endif
   std::string data;
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), key, &data);
   if (s.IsNotFound()) {
@@ -472,6 +528,10 @@ DB::Status RocksdbDB::ReadSingle(const std::string &table, const std::string &ke
 DB::Status RocksdbDB::ScanSingle(const std::string &table, const std::string &key, int len,
                                  const std::vector<std::string> *fields,
                                  std::vector<std::vector<Field>> &result) {
+  #ifdef TEST_ZNBC
+  ScanSingleCount++;
+  if(ScanSingleCount % 100 == 0){printf("ScanSingle Count = %lld\n", ScanSingleCount);}
+  #endif
   rocksdb::Iterator *db_iter = db_->NewIterator(rocksdb::ReadOptions());
   db_iter->Seek(key);
   for (int i = 0; db_iter->Valid() && i < len; i++) {
@@ -492,6 +552,10 @@ DB::Status RocksdbDB::ScanSingle(const std::string &table, const std::string &ke
 
 DB::Status RocksdbDB::UpdateSingle(const std::string &table, const std::string &key,
                                    std::vector<Field> &values) {
+  #ifdef TEST_ZNBC
+  UpdateSingleCount++;
+  if(UpdateSingleCount % 100 == 0){printf("UpdateSingle Count = %lld\n", UpdateSingleCount);}
+  #endif
   std::string data;
   rocksdb::Status s = db_->Get(rocksdb::ReadOptions(), key, &data);
   if (s.IsNotFound()) {
@@ -526,6 +590,10 @@ DB::Status RocksdbDB::UpdateSingle(const std::string &table, const std::string &
 
 DB::Status RocksdbDB::MergeSingle(const std::string &table, const std::string &key,
                                   std::vector<Field> &values) {
+  #ifdef TEST_ZNBC
+  MergeSingleCount++;
+  if(MergeSingleCount % 100 == 0){printf("MergeSingle Count = %lld\n", MergeSingleCount);}
+  #endif
   std::string data;
   SerializeRow(values, data);
   rocksdb::WriteOptions wopt;
@@ -538,16 +606,56 @@ DB::Status RocksdbDB::MergeSingle(const std::string &table, const std::string &k
 
 DB::Status RocksdbDB::InsertSingle(const std::string &table, const std::string &key,
                                    std::vector<Field> &values) {
-  // 若 `datapath` 变量已设置，则批量导入数据 added by znbc
-  static bool data_loaded = false;
-  if (!data_loaded && !datapath_.empty()) {
-    DB::Status status = LoadFromFile(datapath_);
-    if (status != kOK) return status;
-    data_loaded = true;
-  }
-
+  #ifdef TEST_ZNBC
+  InsertSingleCount++;
+  if(InsertSingleCount % 100 == 0){printf("InsertSingle Count = %lld\n", InsertSingleCount);}
+  #endif
   std::string data;
-  SerializeRow(values, data);
+  if(data_loaded == true){
+    int x = insert_count++;
+    const int data_size = 1140;  // 每次读取1140字节
+
+    // 打开文件并读取对应范围的数据
+    std::ifstream file(datapath_, std::ios::binary);
+    if (!file.is_open()) {
+      throw std::runtime_error("Failed to open file: " + datapath_);
+    }
+
+    file.seekg(0, std::ios::beg);  // 重新定位文件指针到文件开始
+
+    if (file_size < data_size) {
+      throw std::runtime_error("File is too small.");
+    }
+
+    // 计算 offset，确保不超出文件大小
+    const int offset = (1140 * x) % (file_size - data_size);  // 保证偏移不会超出文件范围
+
+    // 移动文件指针到目标位置
+    file.seekg(offset, std::ios::beg);
+
+    // 预先为 data 分配空间, 否则会段错误
+    data.reserve(data_size);
+    
+    // 读取1140字节(这里的输入文件已经处理好了,相当于做过SerializeRow)
+    file.read(&data[0], data_size);    // 读取文件内容到字符串中
+
+    if (file.gcount() != data_size) {
+      throw std::runtime_error("Failed to read the expected bytes from file.");
+    }
+  }else {
+    SerializeRow(values, data);
+  }
+  
+  #ifdef SHOW_INSERT_INFO
+  printf("insert key: %s\n", key.c_str());
+  //for(int i = 0; i < values.size(); i++)
+    printf("fields[0].name=%s, value=%s, length=%ld\n", values[0].name.c_str(), values[0].value.c_str(), values[0].value.length());
+  for(int i = 0; i < 114; i++){
+    printf("%c", data[i]);
+  }
+  printf("\n");
+  #endif
+
   rocksdb::WriteOptions wopt;
   rocksdb::Status s = db_->Put(wopt, key, data);
   if (!s.ok()) {
@@ -557,6 +665,10 @@ DB::Status RocksdbDB::InsertSingle(const std::string &table, const std::string &
 }
 
 DB::Status RocksdbDB::DeleteSingle(const std::string &table, const std::string &key) {
+  #ifdef TEST_ZNBC
+  DeleteSingleCount++;
+  if(DeleteSingleCount % 100 == 0){printf("DeleteSingle Count = %lld\n", DeleteSingleCount);}
+  #endif
   rocksdb::WriteOptions wopt;
   rocksdb::Status s = db_->Delete(wopt, key);
   if (!s.ok()) {
@@ -571,8 +683,12 @@ DB *NewRocksdbDB() {
 
 const bool registered = DBFactory::RegisterDB("rocksdb", NewRocksdbDB);
 
+/*
 // 补充 加载数据文件 by znbc
 DB::Status RocksdbDB::LoadFromFile(const std::string &datapath) {
+  #ifdef TEST_ZNBC
+  printf("LoadFromFile\n");
+  #endif
   std::ifstream infile(datapath);
   if (!infile) {
     throw utils::Exception(std::string("Error: Cannot open data file: "));
@@ -596,5 +712,6 @@ DB::Status RocksdbDB::LoadFromFile(const std::string &datapath) {
   infile.close();
   return kOK;
 }
+*/
 
 } // ycsbc

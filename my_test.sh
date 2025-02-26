@@ -1,11 +1,20 @@
 #!/bin/bash
-#DATASETS=("h1_nci" "h2_hgdp" "m1_webster" "m2_xml" "l1_osdb" "l2_ooffice")
-DATASETS=("h1_nci" "m1_webster" "m2_xml")
-WORKLOADS=("workloada" "workloadc" "workloade")
+
+#DATASETS=("h1_nci")
+DATASETS=("h1_nci" "m1_webster" "l1_osdb" "m2_xml"  "l2_ooffice")
+#DATASETS=("h1_nci"  "m1_webster" "l1_osdb" "h2_hgdp" "m2_xml"  "l2_ooffice")
+#WORKLOADS=("workloadd" "workloade" "workloadf")
+#WORKLOADS=("workloada")
+#WORKLOADS=("workloadd") # 有run阶段的insert操作
+WORKLOADS=("workloada" "workloadb" "workloadc" "workloadd" "workloade" "workloadf")
+
 USR_PATH="/home/zwl"
 DATASETS_PATH="/home/zwl/datasets_ycsb"
 ZNS_DEV="nvme0n1"
 ZNS_PATH=/dev/$ZNS_DEV
+
+rm output.txt
+exec > >(tee -a output.txt) 2>&1
 
 for workload in "${WORKLOADS[@]}"; do
     for dataset in "${DATASETS[@]}"; do
@@ -37,9 +46,10 @@ for workload in "${WORKLOADS[@]}"; do
 
     echo "============== Load Phase =============="
 
-    ./ycsb -load -db rocksdb -P workloads/${workload} -P rocksdb/rocksdb.properties -s -p rocksdb.use_direct_io_for_flush_compaction=true \
+    ./ycsb -load -db rocksdb -P workloads/${workload} -P rocksdb/rocksdb.properties -s \
+    -p rocksdb.use_direct_io_for_flush_compaction=true \
     -p rocksdb.compression=no \
-    -p rocksdb.datapath=${DATASETS_PATH}/${dataset}.dat 
+    -p rocksdb.datapath=${DATASETS_PATH}/${dataset}.dat
 
     echo "============== Run Phase ==============="
 

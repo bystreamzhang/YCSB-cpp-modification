@@ -82,6 +82,9 @@ class RocksdbDB : public DB {
   // added by znbc
   Status LoadFromFile(const std::string &datapath);
   std::string datapath_; 
+  bool data_loaded;
+  unsigned long long insert_count;
+  std::streampos file_size;
 
   Status (RocksdbDB::*method_read_)(const std::string &, const std:: string &,
                                     const std::vector<std::string> *, std::vector<Field> &);

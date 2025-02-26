@@ -1,3 +1,15 @@
+# 说明
+
+此修改版本用于对有FEMU模拟的ZNS SSD设备的qemu虚拟机进行测试. 提前已配置了rocksdb和zenfs.
+
+我自行编写的脚本`my_test.sh`是用于一次性对6个workload分别使用一系列指定数据进行测试(nci, xml, osdb等), 相关数据需要自行准备
+
+output.txt将存放测试输出结果,同时也会打印到终端
+
+`make_test.sh`脚本可以一次性编译加测试,如果修改了YCSB-cpp源码则需要编译再运行.
+
+下面是YCSB-cpp的原README.md内容
+
 # YCSB-cpp
 
 Yahoo! Cloud Serving Benchmark([YCSB](https://github.com/brianfrankcooper/YCSB/wiki)) written in C++.
