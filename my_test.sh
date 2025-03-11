@@ -5,8 +5,10 @@ DATASETS=("h1_nci" "m1_webster" "l1_osdb" "m2_xml"  "l2_ooffice")
 #DATASETS=("h1_nci"  "m1_webster" "l1_osdb" "h2_hgdp" "m2_xml"  "l2_ooffice")
 #WORKLOADS=("workloadd" "workloade" "workloadf")
 #WORKLOADS=("workloada")
+#ORKLOADS=("workloadc")
 #WORKLOADS=("workloadd") # 有run阶段的insert操作
 WORKLOADS=("workloada" "workloadb" "workloadc" "workloadd" "workloade" "workloadf")
+#WORKLOADS=("workloada" "workloadb" "workloadc")
 
 USR_PATH="/home/zwl"
 DATASETS_PATH="/home/zwl/datasets_ycsb"
